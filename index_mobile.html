@@ -1,0 +1,1241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>RERA Intel</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+  <style>
+    :root{
+      --bg:#060810;--bg2:#0c0f1a;--bg3:#121628;
+      --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.12);
+      --gold:#c9a84c;--red:#e05252;--green:#4ecba8;--blue:#5b8def;
+      --purple:#a78bfa;--amber:#f59e0b;
+      --muted:rgba(255,255,255,0.35);--text:rgba(255,255,255,0.88);
+      --critical:#e05252;--high:#c9a84c;--medium:#5b8def;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+    html{scroll-behavior:smooth}
+    body{
+      background:var(--bg);color:var(--text);
+      font-family:'Syne',sans-serif;min-height:100vh;
+      overflow-x:hidden;padding-bottom:calc(64px + var(--safe-bottom));
+    }
+    body::before{
+      content:'';position:fixed;width:300px;height:300px;
+      background:radial-gradient(circle,rgba(201,168,76,0.06) 0%,transparent 70%);
+      top:-60px;right:-60px;pointer-events:none;z-index:0;
+    }
+
+    /* ── TOP HEADER ── */
+    header{
+      position:sticky;top:0;z-index:200;
+      background:rgba(6,8,16,0.92);backdrop-filter:blur(20px);
+      border-bottom:1px solid var(--border);
+      padding:0 16px;height:52px;
+      display:flex;align-items:center;justify-content:space-between;
+      gap:10px;
+    }
+    .wordmark{display:flex;align-items:baseline;gap:8px;flex-shrink:0}
+    .wordmark-main{font-size:15px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold)}
+    .wordmark-state{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:0.15em;text-transform:uppercase}
+    .header-actions{display:flex;align-items:center;gap:8px}
+    .live-dot{width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 2.5s ease-in-out infinite;box-shadow:0 0 5px var(--green);flex-shrink:0}
+    @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.3;transform:scale(0.7)}}
+    .btn-refresh{
+      font-family:'JetBrains Mono',monospace;font-size:11px;
+      padding:6px 12px;background:transparent;
+      border:1px solid var(--border2);color:var(--muted);
+      border-radius:6px;cursor:pointer;
+    }
+    #lastUpdate{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
+
+    /* ── CITY TABS (scrollable pill row) ── */
+    .city-bar{
+      background:var(--bg2);border-bottom:1px solid var(--border);
+      padding:8px 16px;display:flex;gap:6px;overflow-x:auto;
+      scrollbar-width:none;-ms-overflow-style:none;
+    }
+    .city-bar::-webkit-scrollbar{display:none}
+    .city-tab{
+      font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;
+      letter-spacing:0.08em;text-transform:uppercase;
+      padding:7px 18px;border-radius:20px;border:none;
+      cursor:pointer;background:var(--bg3);color:var(--muted);
+      white-space:nowrap;transition:all 0.2s;flex-shrink:0;
+    }
+    .city-tab.active{background:var(--gold);color:#000;font-weight:700}
+
+    /* ── MAIN CONTENT ── */
+    main{position:relative;z-index:1;padding:16px 16px 8px}
+
+    /* ── SECTION LABEL ── */
+    .sec{
+      font-family:'JetBrains Mono',monospace;font-size:9px;
+      letter-spacing:0.25em;text-transform:uppercase;color:var(--muted);
+      margin:20px 0 10px;display:flex;align-items:center;gap:8px;
+    }
+    .sec::after{content:'';flex:1;height:1px;background:var(--border)}
+    .sec:first-child{margin-top:4px}
+
+    /* ── CITY HERO ── */
+    .city-hero{margin-bottom:16px}
+    .city-name{font-size:36px;font-weight:800;letter-spacing:-0.02em;line-height:1;color:#fff}
+    .city-name span{color:var(--gold)}
+    .city-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);letter-spacing:0.08em;margin-top:5px;line-height:1.5}
+
+    /* ── STAT CARDS 2×3 grid ── */
+    .stats-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+    .stat{
+      background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+      padding:14px 16px;position:relative;overflow:hidden;
+    }
+    .stat::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent,var(--gold))}
+    .stat.s-red{--accent:var(--red)}.stat.s-green{--accent:var(--green)}
+    .stat.s-blue{--accent:var(--blue)}.stat.s-gold{--accent:var(--gold)}
+    .stat-label{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+    .stat-val{font-size:28px;font-weight:800;line-height:1;letter-spacing:-0.02em}
+    .stat-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px;line-height:1.3}
+
+    /* ── STATUS ROW 2×2 ── */
+    .status-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+    .status-card{
+      background:var(--bg2);border:1px solid var(--border);border-radius:10px;
+      padding:12px 14px;display:flex;align-items:center;justify-content:space-between;
+    }
+    .status-card-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted)}
+    .status-card-val{font-size:22px;font-weight:800;letter-spacing:-0.02em}
+
+    /* ── PANEL ── */
+    .panel{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px}
+    .panel-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+    .panel-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--gold)}
+    .panel-count{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
+
+    /* ── ACT NOW ALERT STRIP ── */
+    .act-now-strip{
+      background:rgba(224,82,82,0.08);border:1px solid rgba(224,82,82,0.25);
+      border-radius:10px;margin-bottom:8px;overflow:hidden;
+    }
+    .act-now-head{
+      padding:10px 14px;border-bottom:1px solid rgba(224,82,82,0.15);
+      display:flex;align-items:center;justify-content:space-between;
+    }
+    .act-now-title{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--red)}
+    .act-now-item{
+      padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.04);
+      display:flex;align-items:flex-start;gap:10px;
+    }
+    .act-now-item:last-child{border-bottom:none}
+    .act-now-flag-title{font-size:12px;font-weight:600;color:#fff;line-height:1.3;margin-bottom:3px}
+    .act-now-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
+
+    /* ── FLAG CARDS (mobile-friendly card layout instead of table) ── */
+    .flag-card{
+      padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.04);
+    }
+    .flag-card:last-child{border-bottom:none}
+    .flag-card.dismissed{opacity:0.3;display:none}
+    .flag-card.dismissed.show{display:block}
+    .flag-card.confirmed .flag-card-title::before{content:'✓ ';color:var(--green)}
+    .flag-card.downgraded{opacity:0.45}
+    .flag-card-title{font-size:13px;font-weight:600;color:#fff;line-height:1.35;margin-bottom:5px}
+    .flag-card-desc{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);line-height:1.5;margin-bottom:8px}
+    .flag-card-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+    .flag-card-actions{display:flex;gap:6px}
+
+    .badge{
+      display:inline-block;font-family:'JetBrains Mono',monospace;
+      font-size:8px;letter-spacing:0.06em;text-transform:uppercase;
+      padding:2px 6px;border-radius:3px;font-weight:600;white-space:nowrap;
+    }
+    .b-critical{background:rgba(224,82,82,0.12);color:var(--critical);border:1px solid rgba(224,82,82,0.25)}
+    .b-high{background:rgba(201,168,76,0.10);color:var(--high);border:1px solid rgba(201,168,76,0.25)}
+    .b-medium{background:rgba(91,141,239,0.10);color:var(--blue);border:1px solid rgba(91,141,239,0.25)}
+    .b-flagged{background:rgba(201,168,76,0.10);color:var(--gold);border:1px solid rgba(201,168,76,0.25)}
+    .conf-badge{
+      display:inline-flex;align-items:center;font-family:'JetBrains Mono',monospace;
+      font-size:8px;padding:2px 5px;border-radius:3px;font-weight:600;white-space:nowrap;
+    }
+    .conf-high{background:rgba(78,203,168,0.12);color:var(--green);border:1px solid rgba(78,203,168,0.25)}
+    .conf-mid{background:rgba(201,168,76,0.10);color:var(--gold);border:1px solid rgba(201,168,76,0.2)}
+    .conf-low{background:rgba(255,255,255,0.05);color:var(--muted);border:1px solid rgba(255,255,255,0.1)}
+    .flag-type-tag{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+    .flag-ts{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+
+    .review-btn{
+      font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.06em;
+      text-transform:uppercase;padding:5px 12px;border-radius:5px;
+      border:1px solid var(--border2);background:transparent;color:var(--muted);
+      cursor:pointer;flex:1;transition:all 0.15s;
+    }
+    .btn-confirm{border-color:rgba(78,203,168,0.35);color:var(--green)}
+    .btn-dismiss{border-color:rgba(224,82,82,0.3);color:var(--red)}
+    .btn-reopen{border-color:rgba(255,255,255,0.15);color:var(--muted)}
+
+    /* ── CHIPS ── */
+    .chips{display:flex;gap:5px;padding:8px 14px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
+    .chips::-webkit-scrollbar{display:none}
+    .chip{
+      font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.08em;
+      text-transform:uppercase;padding:4px 10px;border-radius:4px;
+      border:1px solid var(--border2);background:transparent;color:var(--muted);
+      cursor:pointer;white-space:nowrap;flex-shrink:0;
+    }
+    .chip.on{background:var(--gold);color:#000;border-color:var(--gold);font-weight:700}
+    .chip.on-critical{background:rgba(224,82,82,0.15);color:var(--critical);border-color:rgba(224,82,82,0.4)}
+    .chip.on-high{background:rgba(201,168,76,0.12);color:var(--high);border-color:rgba(201,168,76,0.35)}
+    .chip.on-medium{background:rgba(91,141,239,0.12);color:var(--blue);border-color:rgba(91,141,239,0.35)}
+    .dismiss-toggle{
+      font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.06em;
+      text-transform:uppercase;padding:3px 8px;border-radius:3px;
+      border:1px solid var(--border);background:transparent;color:var(--muted);
+      cursor:pointer;margin-left:auto;flex-shrink:0;
+    }
+
+    /* ── FLAG REVIEW SUMMARY ── */
+    .flag-summary{
+      padding:8px 14px;border-bottom:1px solid var(--border);
+      font-family:'JetBrains Mono',monospace;font-size:9px;
+      display:flex;align-items:center;flex-wrap:wrap;gap:0;
+      color:var(--muted);line-height:1.8;
+    }
+
+    /* ── CONFIDENCE MATRIX (2×2) ── */
+    .matrix-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px}
+    .matrix-cell{
+      border-radius:8px;padding:12px 12px;
+      display:flex;flex-direction:column;gap:4px;cursor:pointer;
+      transition:transform 0.15s;
+    }
+    .matrix-cell:active{transform:scale(0.97)}
+    .mc-act{background:rgba(224,82,82,0.12);border:1px solid rgba(224,82,82,0.3)}
+    .mc-inv{background:rgba(201,168,76,0.10);border:1px solid rgba(201,168,76,0.25)}
+    .mc-mon{background:rgba(91,141,239,0.10);border:1px solid rgba(91,141,239,0.2)}
+    .mc-noi{background:rgba(255,255,255,0.03);border:1px solid var(--border)}
+    .mc-label{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.12em;text-transform:uppercase}
+    .mc-count{font-size:26px;font-weight:800;line-height:1;letter-spacing:-0.02em}
+    .mc-desc{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+
+    /* ── HORIZONTAL BAR CHART ── */
+    .chart-wrap{padding:12px 14px}
+    .chart-title{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.15em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+    .chart-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+    .chart-bar-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);width:100px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+    .chart-bar-track{flex:1;height:18px;background:var(--bg3);border-radius:4px;overflow:hidden}
+    .chart-bar-fill{height:100%;border-radius:4px;transition:width 0.8s ease;display:flex;align-items:center;padding-left:6px}
+    .chart-bar-val{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:#000}
+
+    /* ── BHK CHART ── */
+    .chart-bhk-row{display:flex;align-items:flex-end;gap:6px;height:100px;padding:0 0 6px}
+    .chart-bhk-col{display:flex;flex-direction:column;align-items:center;flex:1;gap:3px;height:100%;justify-content:flex-end}
+    .chart-bhk-bar{width:100%;border-radius:4px 4px 0 0;transition:height 0.8s ease;min-height:4px}
+    .chart-bhk-label{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+    .chart-bhk-val{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;color:var(--text)}
+
+    /* ── PRICE LOCALITY LIST ── */
+    .price-locality-row{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--border)}
+    .price-locality-row:last-child{border-bottom:none}
+    .plr-rank{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);width:16px;flex-shrink:0}
+    .plr-name{flex:1;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .plr-bar-wrap{width:44px;flex-shrink:0}
+    .plr-bar-bg{height:3px;background:var(--border2);border-radius:2px;overflow:hidden}
+    .plr-bar-fill{height:100%;border-radius:2px;transition:width 0.8s ease}
+    .plr-val{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--gold);width:62px;text-align:right;flex-shrink:0}
+
+    /* ── PROP TYPE LIST ── */
+    .prop-type-row{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--border)}
+    .prop-type-row:last-child{border-bottom:none}
+    .pt-icon{font-size:15px;width:22px;flex-shrink:0}
+    .pt-info{flex:1}
+    .pt-name{font-size:12px;font-weight:600;text-transform:capitalize}
+    .pt-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px}
+    .pt-count{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;color:var(--blue)}
+
+    /* ── PROMOTER RISK LIST ── */
+    .promoter-item{display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.04);gap:10px}
+    .promoter-item:last-child{border-bottom:none}
+    .p-rank{font-size:18px;font-weight:800;color:rgba(255,255,255,0.08);width:24px;flex-shrink:0}
+    .p-info{flex:1;min-width:0}
+    .p-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .p-meta{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px;display:flex;gap:5px;flex-wrap:wrap}
+    .p-bar{width:50px;flex-shrink:0}
+    .p-bar-bg{height:3px;background:var(--border2);border-radius:2px;overflow:hidden}
+    .p-bar-fill{height:100%;border-radius:2px;transition:width 1s ease}
+    .p-count{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;width:20px;text-align:right;flex-shrink:0}
+
+    /* ── RERA INTEL ROWS ── */
+    .intel-row{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--border)}
+    .intel-row:last-child{border-bottom:none}
+    .intel-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
+    .intel-val{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600}
+
+    /* ── MAP ── */
+    .map-panel{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:8px}
+    .map-toolbar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+    .map-toggle{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
+    .map-toggle::-webkit-scrollbar{display:none}
+    .map-btn{
+      font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:0.06em;
+      padding:5px 10px;border-radius:5px;border:1px solid var(--border2);
+      background:transparent;color:var(--muted);cursor:pointer;text-transform:uppercase;white-space:nowrap;flex-shrink:0;
+    }
+    .map-btn.active-all{background:rgba(201,168,76,0.12);border-color:var(--gold);color:var(--gold)}
+    .map-btn.active-rera{background:rgba(78,203,168,0.12);border-color:var(--green);color:var(--green)}
+    .map-btn.active-listings{background:rgba(167,139,250,0.12);border-color:var(--purple);color:var(--purple)}
+    .map-btn.active-flagged{background:rgba(224,82,82,0.12);border-color:var(--red);color:var(--red)}
+    .map-legend{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .legend-dot{display:flex;align-items:center;gap:4px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
+    .legend-dot span{width:7px;height:7px;border-radius:50%;display:inline-block}
+    .map-count-chip{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:2px 8px;white-space:nowrap}
+    #cityMap{height:280px;width:100%;background:var(--bg3)}
+    .leaflet-popup-content-wrapper{background:var(--bg2)!important;border:1px solid var(--border2)!important;border-radius:8px!important;box-shadow:0 8px 32px rgba(0,0,0,0.6)!important;color:var(--text)!important}
+    .leaflet-popup-tip{background:var(--bg2)!important}
+    .leaflet-popup-close-button{color:var(--muted)!important}
+    .map-popup-name{font-family:'Syne',sans-serif;font-size:13px;font-weight:600;margin-bottom:4px}
+    .map-popup-row{font-family:'JetBrains Mono',monospace;font-size:10px;color:rgba(255,255,255,0.5);margin-top:2px}
+    .map-popup-row b{color:rgba(255,255,255,0.8);font-weight:500}
+    .map-popup-badge{display:inline-block;margin-top:6px;padding:2px 7px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.06em;text-transform:uppercase}
+
+    /* ── LISTING CARDS ── */
+    .listing-filters{display:flex;gap:5px;padding:8px 14px;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
+    .listing-filters::-webkit-scrollbar{display:none}
+    .listing-card{padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.04);display:flex;align-items:flex-start;gap:12px}
+    .listing-card:last-child{border-bottom:none}
+    .listing-card-main{flex:1;min-width:0}
+    .listing-loc{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .listing-sub{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px;text-transform:capitalize}
+    .listing-card-right{text-align:right;flex-shrink:0}
+    .listing-price{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:600;color:var(--green)}
+    .listing-psqft{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-top:2px}
+    .listing-type-badge{font-family:'JetBrains Mono',monospace;font-size:8px;padding:2px 6px;border-radius:3px;text-transform:uppercase;background:rgba(91,141,239,0.12);border:1px solid rgba(91,141,239,0.3);color:var(--blue)}
+    .listing-type-badge.rent{background:rgba(201,168,76,0.12);border-color:rgba(201,168,76,0.3);color:var(--gold)}
+
+    /* ── PROJECT CARDS ── */
+    .project-card{padding:11px 14px;border-bottom:1px solid rgba(255,255,255,0.04)}
+    .project-card:last-child{border-bottom:none}
+    .project-name{font-size:13px;font-weight:600;line-height:1.3;margin-bottom:4px}
+    .project-promoter{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);margin-bottom:6px}
+    .project-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+    .project-status{font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;text-transform:capitalize}
+    .project-reg{font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)}
+
+    /* ── MARKET SUMMARY INLINE ROWS ── */
+    .mkt-row{display:flex;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border)}
+    .mkt-row:last-child{border-bottom:none}
+    .mkt-label{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)}
+    .mkt-val{font-family:'JetBrains Mono',monospace;font-size:12px}
+    .mkt-big{font-size:22px;font-weight:700;color:var(--gold)}
+
+    /* ── BOTTOM NAV ── */
+    .bottom-nav{
+      position:fixed;bottom:0;left:0;right:0;z-index:300;
+      background:rgba(12,15,26,0.95);backdrop-filter:blur(20px);
+      border-top:1px solid var(--border);
+      display:flex;align-items:stretch;
+      padding-bottom:var(--safe-bottom);
+    }
+    .nav-btn{
+      flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      gap:3px;padding:8px 4px;border:none;background:transparent;cursor:pointer;
+      color:var(--muted);transition:color 0.2s;text-decoration:none;
+    }
+    .nav-btn.active{color:var(--gold)}
+    .nav-btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+    .nav-label{font-family:'JetBrains Mono',monospace;font-size:8px;letter-spacing:0.08em;text-transform:uppercase}
+
+    /* ── PAGE SECTIONS (shown/hidden by nav) ── */
+    .page{display:none}
+    .page.active{display:block}
+
+    /* ── MISC ── */
+    .loading{display:flex;align-items:center;justify-content:center;padding:32px;gap:8px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.1em}
+    .spin{width:13px;height:13px;border:2px solid var(--border2);border-top-color:var(--gold);border-radius:50%;animation:spin 0.7s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .empty{padding:24px;text-align:center;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.08em;line-height:1.6}
+    ::-webkit-scrollbar{width:3px;height:3px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+
+    /* ── PRICE TREND SVG ── */
+    #trendChart svg{width:100%}
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="wordmark">
+    <span class="wordmark-main">RERA Intel</span>
+    <span class="wordmark-state">MH</span>
+  </div>
+  <div class="header-actions">
+    <span class="live-dot"></span>
+    <span id="lastUpdate">—</span>
+    <button class="btn-refresh" onclick="loadCity(activeCity)">↻</button>
+  </div>
+</header>
+
+<div class="city-bar" id="cityTabs"></div>
+
+<main>
+  <!-- ── PAGE: OVERVIEW ── -->
+  <div class="page active" id="page-overview">
+    <div class="city-hero">
+      <div class="city-name" id="cityTitle">—</div>
+      <div class="city-meta" id="cityMeta">Loading...</div>
+    </div>
+
+    <div class="sec">Overview</div>
+    <div class="stats-row" id="statsRow">
+      <div class="stat"><div class="stat-label">Loading</div><div class="stat-val">—</div></div>
+      <div class="stat"><div class="stat-label">Loading</div><div class="stat-val">—</div></div>
+      <div class="stat"><div class="stat-label">Loading</div><div class="stat-val">—</div></div>
+      <div class="stat"><div class="stat-label">Loading</div><div class="stat-val">—</div></div>
+      <div class="stat"><div class="stat-label">Loading</div><div class="stat-val">—</div></div>
+      <div class="stat"><div class="stat-label">Loading</div><div class="stat-val">—</div></div>
+    </div>
+
+    <div class="sec">Status Breakdown</div>
+    <div class="status-row" id="statusRow">
+      <div class="status-card"><span class="status-card-label">—</span><span class="status-card-val">—</span></div>
+      <div class="status-card"><span class="status-card-label">—</span><span class="status-card-val">—</span></div>
+      <div class="status-card"><span class="status-card-label">—</span><span class="status-card-val">—</span></div>
+      <div class="status-card"><span class="status-card-label">—</span><span class="status-card-val">—</span></div>
+    </div>
+
+    <div class="sec">Act Now</div>
+    <div class="act-now-strip">
+      <div class="act-now-head">
+        <span class="act-now-title">⚡ High Priority Flags</span>
+        <span class="panel-count" id="actNowCount">—</span>
+      </div>
+      <div id="actNowList"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+
+    <div class="sec">RERA Intelligence</div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">🏗 Project Stats</span><span class="panel-count" id="reraIntelLabel">—</span></div>
+      <div id="reraIntel"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+
+    <div class="sec">Promoter Risk</div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">🎯 At-Risk Promoters</span><span class="panel-count" id="promoterCount">—</span></div>
+      <div id="promoterList"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: FLAGS ── -->
+  <div class="page" id="page-flags">
+    <div class="sec">Intelligence</div>
+
+    <div class="sec" style="margin-top:4px">Analytics</div>
+    <div class="panel" style="margin-bottom:8px">
+      <div class="panel-head"><span class="panel-title">⊞ Confidence × Severity</span><span class="panel-count" id="matrixTotal">—</span></div>
+      <div class="matrix-grid" id="matrixGrid"><div class="loading" style="grid-column:1/-1"><div class="spin"></div>Loading...</div></div>
+      <div style="display:flex;justify-content:space-between;padding:0 12px 8px;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)"><span>Low confidence</span><span>High confidence</span></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:8px">
+      <div class="panel-head"><span class="panel-title">📊 Flag Types</span><span class="panel-count" id="flagTypeTotal">—</span></div>
+      <div class="chart-wrap" id="flagTypeChart"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+
+    <div class="sec">Suspicious Flags</div>
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">⚠ Flags</span>
+        <span class="panel-count" id="flagCount">—</span>
+        <button class="dismiss-toggle" onclick="toggleDismissed(this)">+ dismissed</button>
+      </div>
+      <div class="flag-summary" id="flagReviewSummary">—</div>
+      <div class="chips">
+        <button class="chip on" onclick="setFilter('all',this)">All</button>
+        <button class="chip" onclick="setFilter('critical',this)">Critical</button>
+        <button class="chip" onclick="setFilter('high',this)">High</button>
+        <button class="chip" onclick="setFilter('medium',this)">Medium</button>
+        <button class="chip" onclick="setFilter('open',this)">Open</button>
+        <button class="chip" onclick="setFilter('confirmed',this)">Confirmed</button>
+      </div>
+      <div id="flagsTable"><div class="loading"><div class="spin"></div>Fetching flags...</div></div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: PRICE ── -->
+  <div class="page" id="page-price">
+    <div class="sec">Price Intelligence</div>
+
+    <div class="panel" style="margin-bottom:8px">
+      <div class="panel-head"><span class="panel-title">📈 Price Trend</span><span class="panel-count" id="trendLabel" style="font-size:9px">avg ₹/sqft</span></div>
+      <div id="trendChart" style="padding:12px 14px 8px"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:8px">
+      <div class="panel-head"><span class="panel-title">📍 Locality Prices</span><span class="panel-count" id="localityCount">—</span></div>
+      <div id="localityPriceList"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:8px">
+      <div class="panel-head"><span class="panel-title">📊 Market Summary</span><span class="panel-count" id="marketSummaryLabel">—</span></div>
+      <div id="marketSummary"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:8px">
+      <div class="panel-head"><span class="panel-title">🛏 BHK Demand</span><span class="panel-count" id="bhkTotal">—</span></div>
+      <div class="chart-wrap" id="bhkChart"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">🏠 Property Types</span><span class="panel-count" id="propTypeCount">—</span></div>
+      <div id="propTypeList"><div class="loading"><div class="spin"></div>Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: LISTINGS ── -->
+  <div class="page" id="page-listings">
+    <div class="sec">99acres Listings</div>
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">🏷 Active Listings</span><span class="panel-count" id="listingsTableCount">—</span></div>
+      <div class="listing-filters">
+        <button class="chip on" onclick="setListingFilter('all',this)">All</button>
+        <button class="chip" onclick="setListingFilter('sale',this)">Sale</button>
+        <button class="chip" onclick="setListingFilter('rent',this)">Rent</button>
+        <button class="chip" onclick="setListingFilter('flat',this)">Flat</button>
+        <button class="chip" onclick="setListingFilter('plot',this)">Plot</button>
+        <button class="chip" onclick="setListingFilter('house_villa',this)">House</button>
+      </div>
+      <div id="listingsTable"><div class="loading"><div class="spin"></div>Fetching listings...</div></div>
+    </div>
+  </div>
+
+  <!-- ── PAGE: MAP ── -->
+  <div class="page" id="page-map">
+    <div class="sec">Project Map</div>
+    <div class="map-panel">
+      <div class="map-toolbar">
+        <div class="map-toggle">
+          <button class="map-btn active-all" onclick="setMapFilter('all',this)">All</button>
+          <button class="map-btn" onclick="setMapFilter('rera',this)">RERA</button>
+          <button class="map-btn" onclick="setMapFilter('listings',this)">Listings</button>
+          <button class="map-btn" onclick="setMapFilter('flagged',this)">Flagged</button>
+        </div>
+        <span class="map-count-chip" id="mapCount">— pins</span>
+      </div>
+      <div class="map-legend" style="padding:8px 14px;border-bottom:1px solid var(--border)">
+        <span class="legend-dot"><span style="background:#e05252"></span>Flagged</span>
+        <span class="legend-dot"><span style="background:#c9a84c"></span>Lapsed</span>
+        <span class="legend-dot"><span style="background:#4ecba8"></span>RERA</span>
+        <span class="legend-dot"><span style="background:#a78bfa;border-radius:2px"></span>Sale</span>
+        <span class="legend-dot"><span style="background:#f59e0b;border-radius:2px"></span>Rent</span>
+      </div>
+      <div id="cityMap"></div>
+    </div>
+
+    <div class="sec">RERA Projects</div>
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-head"><span class="panel-title">📋 All Projects</span><span class="panel-count" id="projCount">—</span></div>
+      <div id="projectsTable"><div class="loading"><div class="spin"></div>Fetching projects...</div></div>
+    </div>
+  </div>
+</main>
+
+<!-- ── BOTTOM NAVIGATION ── -->
+<nav class="bottom-nav">
+  <button class="nav-btn active" onclick="showPage('overview',this)">
+    <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    <span class="nav-label">Overview</span>
+  </button>
+  <button class="nav-btn" onclick="showPage('flags',this)">
+    <svg viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+    <span class="nav-label">Flags</span>
+  </button>
+  <button class="nav-btn" onclick="showPage('price',this)">
+    <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    <span class="nav-label">Price</span>
+  </button>
+  <button class="nav-btn" onclick="showPage('listings',this)">
+    <svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+    <span class="nav-label">Listings</span>
+  </button>
+  <button class="nav-btn" onclick="showPage('map',this)">
+    <svg viewBox="0 0 24 24"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+    <span class="nav-label">Map</span>
+  </button>
+</nav>
+
+<script>
+  const SB_URL='https://bmiunaojlqwscybcayyk.supabase.co';
+  const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJtaXVuYW9qbHF3c2N5YmNheXlrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQwNjQ5MzcsImV4cCI6MjA4OTY0MDkzN30.r72M4RD8fSvFlQtpzNK6h2Dwiptb74VBL1hN6w0wN40';
+  const CITIES=[{id:1,name:'Akola'},{id:9,name:'Amravati'}];
+  let activeCity=CITIES[0],allFlags=[],allListings=[],allProjects=[];
+  let activeFilter='all',activeListingFilter='all',showDismissed=false,activeMatrixFilter=null;
+
+  async function sb(path){
+    const r=await fetch(`${SB_URL}/rest/v1/${path}`,{headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`}});
+    if(!r.ok) throw new Error(`${r.status}`);
+    return r.json();
+  }
+  async function sbPatch(table,id,body){
+    const r=await fetch(`${SB_URL}/rest/v1/${table}?id=eq.${id}`,{
+      method:'PATCH',
+      headers:{apikey:SB_KEY,Authorization:`Bearer ${SB_KEY}`,'Content-Type':'application/json','Prefer':'return=minimal'},
+      body:JSON.stringify(body)
+    });
+    return r.ok;
+  }
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  function showPage(name,btn){
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('page-'+name).classList.add('active');
+    btn.classList.add('active');
+    // invalidate map size when map tab becomes visible
+    if(name==='map'&&mapInstance) setTimeout(()=>mapInstance.invalidateSize(),50);
+    window.scrollTo(0,0);
+  }
+
+  function buildCityTabs(){
+    document.getElementById('cityTabs').innerHTML=CITIES.map(c=>
+      `<button class="city-tab ${c.id===activeCity.id?'active':''}" onclick="switchCity(${c.id})">${c.name}</button>`
+    ).join('');
+  }
+  function switchCity(id){
+    activeCity=CITIES.find(c=>c.id===id);
+    activeListingFilter='all';activeFilter='all';
+    buildCityTabs();loadCity(activeCity);
+  }
+
+  async function loadCity(city){
+    document.getElementById('cityTitle').innerHTML=city.name.slice(0,-1)+`<span>${city.name.slice(-1)}</span>`;
+    document.getElementById('cityMeta').textContent='Loading...';
+    document.getElementById('lastUpdate').textContent='...';
+    await loadListings(city);
+    await Promise.all([loadFlags(city),loadProjects(city)]);
+    document.getElementById('lastUpdate').textContent=
+      new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  // ── Listings ─────────────────────────────────────────────────────────────────
+  async function loadListings(city){
+    try{
+      allListings=await sb(`listings?city_id=eq.${city.id}&source=eq.99acres&listing_status=eq.active&select=id,listing_type,property_type,listed_price,price_per_sqft,area_sqft,bedrooms,locality,listed_by,latitude,longitude,last_seen_at&order=last_seen_at.desc.nullslast&limit=500`);
+      renderLocalityPrices();renderPropertyTypes();renderMarketSummary();
+      renderListingsTable();renderBHKChart();renderPriceTrend();
+    }catch(e){document.getElementById('listingsTable').innerHTML=`<div class="empty">Error: ${e.message}</div>`;}
+  }
+
+  // ── Flags ─────────────────────────────────────────────────────────────────
+  async function loadFlags(city){
+    try{
+      const [cityFlags,crossFlags]=await Promise.all([
+        sb(`suspicious_flags?city_id=eq.${city.id}&order=created_at.desc&limit=400`),
+        sb(`suspicious_flags?city_id=is.null&order=created_at.desc&limit=100`)
+      ]);
+      allFlags=[...cityFlags,...crossFlags.map(f=>({...f,_crossCity:true}))];
+      renderFlags();renderMatrix();renderFlagTypeChart();renderActNow();
+    }catch(e){document.getElementById('flagsTable').innerHTML=`<div class="empty">Error: ${e.message}</div>`;}
+  }
+
+  function setFilter(f,btn){
+    activeFilter=f;
+    document.querySelectorAll('.chips .chip').forEach(b=>b.className='chip');
+    btn.classList.add('on');
+    if(f==='critical'||f==='high'||f==='medium') btn.classList.add(`on-${f}`);
+    renderFlags();
+  }
+  function toggleDismissed(btn){
+    showDismissed=!showDismissed;
+    btn.textContent=showDismissed?'- dismissed':'+ dismissed';
+    document.querySelectorAll('.flag-card.dismissed').forEach(c=>c.classList.toggle('show',showDismissed));
+  }
+  function confBadge(c){
+    if(c===null||c===undefined) return '';
+    const cls=c>=70?'conf-high':c>=40?'conf-mid':'conf-low';
+    return `<span class="conf-badge ${cls}">${c}%</span>`;
+  }
+  function effectiveSeverity(f){
+    if((f.confidence!==null&&f.confidence<30)&&(f.severity==='high'||f.severity==='critical')) return 'downgraded';
+    return f.severity||'medium';
+  }
+
+  function renderFlags(){
+    const sevFilter=['critical','high','medium','low'];
+    let list=allFlags;
+    if(activeFilter==='open') list=allFlags.filter(f=>f.status==='open'||!f.status);
+    else if(activeFilter==='confirmed') list=allFlags.filter(f=>f.status==='confirmed');
+    else if(sevFilter.includes(activeFilter)) list=allFlags.filter(f=>f.severity===activeFilter);
+    if(activeMatrixFilter){
+      list=list.filter(f=>{
+        const hs=f.severity==='critical'||f.severity==='high';
+        const hc=(f.confidence??0)>=50;
+        return ((hs?'H':'L')+(hc?'H':'L'))===activeMatrixFilter;
+      });
+    }
+    list=[...list].sort((a,b)=>{
+      const score=f=>({critical:4,high:3,medium:2,low:1}[f.severity]||1)*((f.confidence??50)/100);
+      if(a.status==='confirmed'&&b.status!=='confirmed') return -1;
+      if(b.status==='confirmed'&&a.status!=='confirmed') return 1;
+      return score(b)-score(a);
+    });
+
+    const visible=list.filter(f=>f.status!=='dismissed');
+    const dismissed=list.filter(f=>f.status==='dismissed');
+
+    const tOpen=allFlags.filter(f=>f.status==='open'||!f.status).length;
+    const tConf=allFlags.filter(f=>f.status==='confirmed').length;
+    const tDism=allFlags.filter(f=>f.status==='dismissed').length;
+    const actN=allFlags.filter(f=>(f.severity==='critical'||f.severity==='high')&&(f.confidence??0)>=70&&f.status!=='dismissed').length;
+    const matrixNames={HH:'Act Now',HL:'Investigate',LH:'Monitor',LL:'Noise'};
+    const summaryEl=document.getElementById('flagReviewSummary');
+    if(summaryEl){
+      summaryEl.innerHTML=
+        `<span style="color:var(--gold)">${tOpen} open</span>
+         <span style="color:var(--muted);margin:0 4px">·</span>
+         <span style="color:var(--green)">${tConf} confirmed</span>
+         <span style="color:var(--muted);margin:0 4px">·</span>
+         <span style="color:var(--muted)">${tDism} dismissed</span>
+         <span style="color:var(--muted);margin:0 6px">|</span>
+         <span style="color:var(--red)">⚡ ${actN} act now</span>
+         ${activeMatrixFilter?`<span style="color:var(--muted);margin:0 4px">·</span><span style="color:var(--blue);cursor:pointer" onclick="activeMatrixFilter=null;renderFlags()">✕ ${matrixNames[activeMatrixFilter]}</span>`:''}`;
+    }
+    document.getElementById('flagCount').textContent=`${visible.length}${activeMatrixFilter?' filtered':''} flags`;
+
+    if(!list.length){
+      document.getElementById('flagsTable').innerHTML=`<div class="empty">No ${activeFilter==='all'?'':''+activeFilter+' '}flags for ${activeCity.name}.</div>`;
+      return;
+    }
+
+    const renderCard=f=>{
+      const dt=f.created_at?new Date(f.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}):'—';
+      const eff=effectiveSeverity(f);
+      const isDismissed=f.status==='dismissed';
+      const isConfirmed=f.status==='confirmed';
+      const cardClass=`flag-card ${eff==='downgraded'?'downgraded':''} ${isDismissed?'dismissed':''} ${isConfirmed?'confirmed':''}`.trim();
+      const sevDisplay=eff==='downgraded'?'medium':f.severity||'medium';
+      const btns=isDismissed
+        ?`<button class="review-btn btn-reopen" onclick="reviewFlag('${f.id}','open',this)">↺ Reopen</button>`
+        :isConfirmed
+        ?`<button class="review-btn btn-dismiss" onclick="reviewFlag('${f.id}','dismissed',this)">✕</button><button class="review-btn btn-reopen" onclick="reviewFlag('${f.id}','open',this)">↺</button>`
+        :`<button class="review-btn btn-confirm" onclick="reviewFlag('${f.id}','confirmed',this)">✓ Confirm</button><button class="review-btn btn-dismiss" onclick="reviewFlag('${f.id}','dismissed',this)">✕</button>`;
+      return `<div class="${cardClass}" data-id="${f.id}">
+        <div class="flag-card-title">${esc(f.title||'—')}</div>
+        <div class="flag-card-desc">${esc((f.description||'').substring(0,140))}${(f.description||'').length>140?'…':''}</div>
+        <div class="flag-card-meta">
+          <span class="badge b-${sevDisplay}">${f.severity||'—'}</span>
+          ${confBadge(f.confidence)}
+          <span class="flag-type-tag">${(f.flag_type||'—').replace(/_/g,' ')}</span>
+          <span class="flag-ts">${dt}</span>
+          ${f._crossCity?'<span style="font-family:\'JetBrains Mono\',monospace;font-size:8px;color:var(--purple)">cross-city</span>':''}
+        </div>
+        <div class="flag-card-actions">${btns}</div>
+      </div>`;
+    };
+
+    document.getElementById('flagsTable').innerHTML=
+      [...visible.map(renderCard),...dismissed.map(renderCard)].join('');
+    if(showDismissed) document.querySelectorAll('.flag-card.dismissed').forEach(c=>c.classList.add('show'));
+  }
+
+  async function reviewFlag(id,newStatus,btn){
+    const ok=await sbPatch('suspicious_flags',id,{status:newStatus,reviewed_at:new Date().toISOString(),reviewed_by:'dashboard'});
+    if(!ok){btn.textContent='Err';return;}
+    const flag=allFlags.find(f=>f.id===id);
+    if(flag) flag.status=newStatus;
+    renderFlags();renderMatrix();renderActNow();
+  }
+
+  // ── Matrix ──────────────────────────────────────────────────────────────────
+  function renderMatrix(){
+    const cells={
+      HH:{label:'Act Now',desc:'High · High conf',cls:'mc-act',color:'var(--red)',flags:[]},
+      HL:{label:'Investigate',desc:'High · Low conf',cls:'mc-inv',color:'var(--gold)',flags:[]},
+      LH:{label:'Monitor',desc:'Low · High conf',cls:'mc-mon',color:'var(--blue)',flags:[]},
+      LL:{label:'Noise',desc:'Low · Low conf',cls:'mc-noi',color:'var(--muted)',flags:[]},
+    };
+    const openFlags=allFlags.filter(f=>f.status!=='dismissed');
+    openFlags.forEach(f=>{
+      const hs=f.severity==='critical'||f.severity==='high';
+      const hc=(f.confidence??0)>=50;
+      cells[(hs?'H':'L')+(hc?'H':'L')].flags.push(f);
+    });
+    document.getElementById('matrixTotal').textContent=`${openFlags.length} open`;
+    document.getElementById('matrixGrid').innerHTML=['HH','HL','LH','LL'].map(k=>{
+      const c=cells[k];
+      return `<div class="matrix-cell ${c.cls}" onclick="filterByMatrix('${k}')">
+        <div class="mc-label" style="color:${c.color}">${c.label}</div>
+        <div class="mc-count" style="color:${c.color}">${c.flags.length}</div>
+        <div class="mc-desc">${c.desc}</div>
+      </div>`;
+    }).join('');
+  }
+  function filterByMatrix(q){
+    activeMatrixFilter=activeMatrixFilter===q?null:q;
+    document.querySelectorAll('.matrix-cell').forEach((c,i)=>{
+      c.style.outline=['HH','HL','LH','LL'][i]===activeMatrixFilter?'2px solid rgba(255,255,255,0.4)':'none';
+      c.style.outlineOffset='-2px';
+    });
+    renderFlags();
+    // switch to flags page
+    const flagBtn=document.querySelector('.nav-btn:nth-child(2)');
+    showPage('flags',flagBtn);
+  }
+
+  // ── Flag Type Chart ─────────────────────────────────────────────────────────
+  function renderFlagTypeChart(){
+    const counts={};
+    const LABELS={listing_price_outlier:'Price outlier',promoter_name_cluster:'Name cluster',rera_escrow_deficit:'Escrow deficit',repeat_offender_new_project:'Repeat offender',stalled_projects:'Stalled projects',repeated_complaints:'Complaints',complaint_velocity:'Complaint velocity',locality_price_spike:'Price spike'};
+    allFlags.forEach(f=>{if(f.status==='dismissed') return;counts[f.flag_type||'other']=(counts[f.flag_type||'other']||0)+1;});
+    const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+    const max=sorted[0]?.[1]||1;
+    const COLORS=['var(--red)','var(--gold)','var(--blue)','var(--green)','var(--purple)','var(--amber)','var(--muted)'];
+    document.getElementById('flagTypeTotal').textContent=`${allFlags.filter(f=>f.status!=='dismissed').length} active`;
+    document.getElementById('flagTypeChart').innerHTML=`
+      <div class="chart-title">Active flags by type</div>
+      ${sorted.map(([type,count],i)=>`
+        <div class="chart-bar-row">
+          <div class="chart-bar-label">${LABELS[type]||type.replace(/_/g,' ')}</div>
+          <div class="chart-bar-track"><div class="chart-bar-fill" style="width:${Math.round(count/max*100)}%;background:${COLORS[i%COLORS.length]}"><span class="chart-bar-val">${count}</span></div></div>
+        </div>`).join('')}`;
+  }
+
+  // ── BHK Chart ────────────────────────────────────────────────────────────────
+  function renderBHKChart(){
+    const counts={},prices={};
+    allListings.filter(l=>l.bedrooms&&l.bedrooms>=1&&l.bedrooms<=5&&l.listing_type==='sale').forEach(l=>{
+      const b=l.bedrooms;counts[b]=(counts[b]||0)+1;
+      const v=Number(l.price_per_sqft);
+      if(v>0&&v<200000){if(!prices[b])prices[b]=[];prices[b].push(v);}
+    });
+    const bhks=Object.keys(counts).map(Number).sort((a,b)=>a-b);
+    const sale=allListings.filter(l=>l.bedrooms&&l.listing_type==='sale').length;
+    if(!bhks.length){document.getElementById('bhkChart').innerHTML=`<div class="empty">No BHK data.</div>`;return;}
+    const max=Math.max(...bhks.map(b=>counts[b]));
+    const COLORS=['var(--blue)','var(--green)','var(--gold)','var(--purple)','var(--red)'];
+    document.getElementById('bhkTotal').textContent=`${sale} sale listings`;
+    document.getElementById('bhkChart').innerHTML=`
+      <div class="chart-title">Sale listings by BHK</div>
+      <div class="chart-bhk-row">
+        ${bhks.map((b,i)=>{
+          const pct=Math.round(counts[b]/max*100);
+          const avgP=prices[b]?.length?Math.round(prices[b].reduce((s,v)=>s+v,0)/prices[b].length):null;
+          return `<div class="chart-bhk-col">
+            <div class="chart-bhk-val">${counts[b]}</div>
+            <div class="chart-bhk-bar" style="height:${Math.max(pct,4)}%;background:${COLORS[i%COLORS.length]}"></div>
+            <div class="chart-bhk-label">${b}BHK</div>
+            ${avgP?`<div style="font-family:'JetBrains Mono',monospace;font-size:7px;color:var(--muted)">₹${(avgP/1000).toFixed(0)}k</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>`;
+  }
+
+  // ── Act Now ─────────────────────────────────────────────────────────────────
+  function renderActNow(){
+    const el=document.getElementById('actNowList');
+    const countEl=document.getElementById('actNowCount');
+    if(!el) return;
+    const actNow=allFlags
+      .filter(f=>(f.severity==='critical'||f.severity==='high')&&(f.confidence??0)>=70&&f.status!=='dismissed')
+      .sort((a,b)=>(b.confidence??0)-(a.confidence??0)).slice(0,6);
+    if(countEl) countEl.textContent=`${actNow.length} flag${actNow.length!==1?'s':''}`;
+    if(!actNow.length){
+      el.innerHTML=`<div class="empty">${allFlags.length?'All reviewed or low confidence.':'Run detector first.'}</div>`;
+      return;
+    }
+    el.innerHTML=actNow.map(f=>`
+      <div class="act-now-item">
+        <div style="flex:1;min-width:0">
+          <div class="act-now-flag-title">${esc(f.title||'—')}</div>
+          <div class="act-now-meta">${(f.flag_type||'').replace(/_/g,' ')}${f._crossCity?' · cross-city':''}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0">
+          ${confBadge(f.confidence)}
+          <button class="review-btn btn-confirm" style="font-size:9px;padding:4px 8px" onclick="reviewFlag('${f.id}','confirmed',this)">✓</button>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── Projects ─────────────────────────────────────────────────────────────────
+  async function loadProjects(city){
+    try{
+      allProjects=await sb(`rera_projects?city_id=eq.${city.id}&select=*&order=created_at.desc&limit=500`);
+      renderStats(allProjects,city);
+      renderRERAIntelligence(allProjects);
+      loadPromoterRisk();
+      renderProjects(allProjects);
+      updateMap(allProjects,allListings,city);
+    }catch(e){document.getElementById('projectsTable').innerHTML=`<div class="empty">Error: ${e.message}</div>`;}
+  }
+
+  function renderStats(projects,city){
+    const total=projects.length;
+    const active=projects.filter(p=>p.rera_status==='active').length;
+    const lapsed=projects.filter(p=>p.rera_status==='lapsed').length;
+    const completed=projects.filter(p=>p.rera_status==='completed').length;
+    const deReg=projects.filter(p=>p.rera_status==='de-registered').length;
+    const other=total-active-lapsed-completed-deReg;
+    const flagged=projects.filter(p=>p.is_flagged).length;
+    const critical=allFlags.filter(f=>f.severity==='critical').length;
+    const high=allFlags.filter(f=>f.severity==='high').length;
+    const validP=allListings.filter(l=>l.price_per_sqft&&Number(l.price_per_sqft)<200000);
+    const avgPsqft=validP.length?Math.round(validP.reduce((s,l)=>s+Number(l.price_per_sqft),0)/validP.length):null;
+
+    document.getElementById('cityMeta').textContent=`${total} RERA · ${allFlags.length} flags · ${allListings.length} listings`;
+    document.getElementById('statsRow').innerHTML=`
+      <div class="stat s-green"><div class="stat-label">RERA Projects</div><div class="stat-val">${total}</div><div class="stat-sub">${city.name}</div></div>
+      <div class="stat s-blue"><div class="stat-label">Listings</div><div class="stat-val">${allListings.length||'—'}</div><div class="stat-sub">${avgPsqft?'₹'+avgPsqft.toLocaleString('en-IN')+'/sqft':'active'}</div></div>
+      <div class="stat ${flagged>0?'s-gold':'s-green'}"><div class="stat-label">Flagged</div><div class="stat-val">${flagged}</div><div class="stat-sub">of ${total}</div></div>
+      <div class="stat ${critical>0?'s-red':'s-gold'}"><div class="stat-label">Active Flags</div><div class="stat-val">${allFlags.filter(f=>f.status!=='dismissed').length}</div><div class="stat-sub">${critical} critical · ${high} high</div></div>
+      <div class="stat ${lapsed>0?'s-gold':'s-green'}"><div class="stat-label">Lapsed</div><div class="stat-val">${lapsed}</div><div class="stat-sub">${completed} completed</div></div>
+      <div class="stat s-blue"><div class="stat-label">De-reg / Other</div><div class="stat-val">${deReg+other}</div><div class="stat-sub">${active} active RERA</div></div>`;
+    document.getElementById('statusRow').innerHTML=`
+      <div class="status-card"><span class="status-card-label">Active</span><span class="status-card-val" style="color:var(--green)">${active}</span></div>
+      <div class="status-card"><span class="status-card-label">Completed</span><span class="status-card-val" style="color:var(--blue)">${completed}</span></div>
+      <div class="status-card"><span class="status-card-label">Lapsed</span><span class="status-card-val" style="color:var(--gold)">${lapsed}</span></div>
+      <div class="status-card"><span class="status-card-label">De-reg+Other</span><span class="status-card-val" style="color:var(--muted)">${deReg+other}</span></div>`;
+  }
+
+  function renderRERAIntelligence(projects){
+    const wu=projects.filter(p=>p.total_units>0);
+    const tu=wu.reduce((s,p)=>s+(p.total_units||0),0);
+    const su=wu.reduce((s,p)=>s+(p.units_sold||0),0);
+    const sr=tu?Math.round(su/tu*100):0;
+    const wd=projects.filter(p=>p.delay_months>0);
+    const ad=wd.length?Math.round(wd.reduce((s,p)=>s+p.delay_months,0)/wd.length):0;
+    const tc=projects.reduce((s,p)=>s+(p.complaint_count||0),0);
+    const wc=projects.filter(p=>(p.complaint_count||0)>0).length;
+    const we=projects.filter(p=>p.escrow_balance!==null&&p.escrow_balance!==undefined&&Number(p.escrow_balance)>0);
+    const te=we.reduce((s,p)=>s+Number(p.escrow_balance),0);
+    const lc=projects.filter(p=>p.rera_status==='lapsed').length;
+    const row=(l,v,c='var(--text)')=>`<div class="intel-row"><span class="intel-label">${l}</span><span class="intel-val" style="color:${c}">${v}</span></div>`;
+    document.getElementById('reraIntelLabel').textContent=`${projects.length} projects`;
+    document.getElementById('reraIntel').innerHTML=
+      row('UNITS SOLD / TOTAL',`${su.toLocaleString('en-IN')} / ${tu.toLocaleString('en-IN')}`,sr>60?'var(--green)':sr>30?'var(--gold)':'var(--red)')+
+      row('SALE RATE',`${sr}%`,sr>60?'var(--green)':sr>30?'var(--gold)':'var(--red)')+
+      row('AVG DELAY',ad?`${ad} months`:'None',ad>6?'var(--red)':ad>0?'var(--gold)':'var(--green)')+
+      row('TOTAL COMPLAINTS',`${tc} (${wc} projects)`,tc>10?'var(--red)':tc>0?'var(--gold)':'var(--muted)')+
+      (we.length?row('ESCROW BALANCE','₹'+formatPrice(te),'var(--blue)'):'')+
+      row('LAPSED PROJECTS',`${lc}`,'var(--gold)');
+  }
+
+  function loadPromoterRisk(){
+    const map={};
+    allProjects.forEach(p=>{
+      if(!p.promoter_name) return;
+      const k=p.promoter_name.trim();
+      if(!map[k]) map[k]={projects:0,lapsed:0,complaints:0,flagged:0};
+      map[k].projects++;
+      if(p.rera_status==='lapsed'||p.rera_status==='de-registered') map[k].lapsed++;
+      map[k].complaints+=Number(p.complaint_count||0);
+      if(p.is_flagged) map[k].flagged++;
+    });
+    const scored=Object.entries(map)
+      .map(([name,d])=>({name,...d,score:d.flagged*3+d.lapsed*2+d.complaints}))
+      .filter(p=>p.score>0).sort((a,b)=>b.score-a.score).slice(0,8);
+    const max=scored[0]?.score||1;
+    document.getElementById('promoterCount').textContent=`${scored.length} at-risk`;
+    if(!scored.length){document.getElementById('promoterList').innerHTML=`<div class="empty">No at-risk promoters.</div>`;return;}
+    document.getElementById('promoterList').innerHTML=scored.map((p,i)=>{
+      const tags=[];
+      if(p.flagged) tags.push(`<span style="color:var(--red)">${p.flagged}F</span>`);
+      if(p.lapsed) tags.push(`<span style="color:var(--gold)">${p.lapsed}L</span>`);
+      if(p.complaints) tags.push(`<span style="color:var(--blue)">${p.complaints}C</span>`);
+      return `<div class="promoter-item">
+        <div class="p-rank">${String(i+1).padStart(2,'0')}</div>
+        <div class="p-info"><div class="p-name">${esc(p.name)}</div><div class="p-meta">${tags.join(' ')}</div></div>
+        <div class="p-bar"><div class="p-bar-bg"><div class="p-bar-fill" style="width:${Math.round(p.score/max*100)}%;background:var(--red)"></div></div></div>
+        <div class="p-count" style="color:var(--red)">${p.projects}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderProjects(projects){
+    document.getElementById('projCount').textContent=`${projects.length} projects`;
+    if(!projects.length){document.getElementById('projectsTable').innerHTML=`<div class="empty">No projects.</div>`;return;}
+    document.getElementById('projectsTable').innerHTML=projects.map(p=>{
+      const st=(p.rera_status||'—').toLowerCase();
+      const sc=st==='active'?'var(--green)':st==='lapsed'||st==='de-registered'?'var(--gold)':st==='completed'?'var(--blue)':'var(--muted)';
+      const flagBadge=p.is_flagged?`<span class="badge b-flagged">⚠</span>`:'';
+      return `<div class="project-card">
+        <div class="project-name">${esc(p.project_name||'—')}</div>
+        <div class="project-promoter">${esc(p.promoter_name||'—')}</div>
+        <div class="project-meta">
+          <span class="project-status" style="color:${sc}">${esc(p.rera_status||'—')}</span>
+          ${p.complaint_count>0?`<span class="badge b-high">${p.complaint_count} complaints</span>`:''}
+          ${flagBadge}
+          <span class="project-reg">${esc(p.rera_registration||'—')}</span>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // ── Price Intelligence ────────────────────────────────────────────────────
+  function renderLocalityPrices(){
+    const lmap={};
+    allListings.forEach(l=>{
+      if(!l.locality||!l.price_per_sqft) return;
+      const loc=l.locality.replace(/,\s*[A-Za-z\s]+$/,'').trim();
+      if(!lmap[loc]) lmap[loc]=[];
+      const v=Number(l.price_per_sqft);
+      if(v>0&&v<200000) lmap[loc].push(v);
+    });
+    const rows=Object.entries(lmap).filter(([,v])=>v.length>=1)
+      .map(([loc,vals])=>({loc,avg:Math.round(vals.reduce((s,v)=>s+v,0)/vals.length),count:vals.length}))
+      .sort((a,b)=>b.avg-a.avg).slice(0,10);
+    const total=rows.reduce((s,r)=>s+r.count,0);
+    document.getElementById('localityCount').textContent=`${rows.length} localities`;
+    if(!rows.length){document.getElementById('localityPriceList').innerHTML=`<div class="empty">No data.</div>`;return;}
+    const max=rows[0].avg;
+    document.getElementById('localityPriceList').innerHTML=
+      `<div style="padding:5px 14px 0;font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)">Based on ${total} active listings</div>`+
+      rows.map((r,i)=>`
+        <div class="price-locality-row">
+          <div class="plr-rank">${i+1}</div>
+          <div class="plr-name">${esc(r.loc)}</div>
+          <div class="plr-bar-wrap"><div class="plr-bar-bg"><div class="plr-bar-fill" style="width:${Math.round(r.avg/max*100)}%;background:var(--gold)"></div></div></div>
+          <div class="plr-val">₹${r.avg.toLocaleString('en-IN')}</div>
+        </div>`).join('');
+  }
+
+  function renderPropertyTypes(){
+    const ICON={flat:'🏢',plot:'🌐',house_villa:'🏠','residential apartment':'🏢'};
+    const tmap={};
+    allListings.forEach(l=>{
+      const t=l.property_type||'other';
+      if(!tmap[t]) tmap[t]={count:0,prices:[]};
+      tmap[t].count++;
+      const v=Number(l.price_per_sqft);
+      if(v>0&&v<200000) tmap[t].prices.push(v);
+    });
+    const sorted=Object.entries(tmap).sort((a,b)=>b[1].count-a[1].count);
+    document.getElementById('propTypeCount').textContent=`${sorted.length} types`;
+    if(!sorted.length){document.getElementById('propTypeList').innerHTML=`<div class="empty">No data.</div>`;return;}
+    document.getElementById('propTypeList').innerHTML=sorted.map(([type,d])=>{
+      const avg=d.prices.length?Math.round(d.prices.reduce((s,v)=>s+v,0)/d.prices.length):null;
+      return `<div class="prop-type-row">
+        <div class="pt-icon">${ICON[type]||'🏗'}</div>
+        <div class="pt-info"><div class="pt-name">${type.replace(/_/g,' ')}</div>
+          <div class="pt-meta">${avg?'₹'+avg.toLocaleString('en-IN')+'/sqft avg':'No price data'}</div></div>
+        <div class="pt-count">${d.count}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderMarketSummary(){
+    const valid=allListings.filter(l=>l.price_per_sqft&&Number(l.price_per_sqft)>0&&Number(l.price_per_sqft)<200000);
+    const prices=valid.map(l=>Number(l.price_per_sqft)).sort((a,b)=>a-b);
+    const avg=prices.length?Math.round(prices.reduce((s,v)=>s+v,0)/prices.length):null;
+    const median=prices.length?prices[Math.floor(prices.length/2)]:null;
+    const sale=allListings.filter(l=>l.listing_type==='sale').length;
+    const rent=allListings.filter(l=>l.listing_type==='rent').length;
+    const beds=allListings.filter(l=>l.bedrooms);
+    const avgBed=beds.length?(beds.reduce((s,l)=>s+l.bedrooms,0)/beds.length).toFixed(1):null;
+    document.getElementById('marketSummaryLabel').textContent=`${allListings.length} total`;
+    document.getElementById('marketSummary').innerHTML=
+      `${avg?`<div class="mkt-row"><span class="mkt-label">AVG PRICE/SQFT</span><span class="mkt-big">₹${avg.toLocaleString('en-IN')}</span></div>`:''}
+       ${median?`<div class="mkt-row"><span class="mkt-label">MEDIAN</span><span class="mkt-val">₹${median.toLocaleString('en-IN')}</span></div>`:''}
+       <div class="mkt-row"><span class="mkt-label">SALE / RENT</span><span class="mkt-val"><span style="color:var(--green)">${sale}</span> / <span style="color:var(--gold)">${rent}</span></span></div>
+       ${avgBed?`<div class="mkt-row"><span class="mkt-label">AVG BEDROOMS</span><span class="mkt-val">${avgBed} BHK</span></div>`:''}`;
+  }
+
+  function setListingFilter(f,btn){
+    activeListingFilter=f;
+    document.querySelectorAll('.listing-filters .chip').forEach(b=>b.className='chip');
+    btn.classList.add('on');
+    renderListingsTable();
+  }
+
+  function renderListingsTable(){
+    const tf=['flat','plot','house_villa'];
+    const list=activeListingFilter==='all'?allListings
+      :tf.includes(activeListingFilter)?allListings.filter(l=>l.property_type===activeListingFilter)
+      :allListings.filter(l=>l.listing_type===activeListingFilter);
+    document.getElementById('listingsTableCount').textContent=`${list.length} listings`;
+    if(!list.length){document.getElementById('listingsTable').innerHTML=`<div class="empty">No listings.</div>`;return;}
+    const rows=list.slice(0,80).map(l=>{
+      const price=l.listed_price?'₹'+formatPrice(Number(l.listed_price)):'—';
+      const psqft=l.price_per_sqft?'₹'+Math.round(l.price_per_sqft).toLocaleString('en-IN')+'/sqft':'';
+      const badge=`<span class="listing-type-badge ${l.listing_type==='rent'?'rent':''}">${l.listing_type||'—'}</span>`;
+      const beds=l.bedrooms?`${l.bedrooms} BHK · `:'';
+      const area=l.area_sqft?Math.round(l.area_sqft).toLocaleString('en-IN')+' sqft':'';
+      const loc=(l.locality||'—').replace(/,\s*[A-Za-z\s]+$/,'').trim();
+      return `<div class="listing-card">
+        <div class="listing-card-main">
+          <div class="listing-loc">${esc(loc)}</div>
+          <div class="listing-sub">${beds}${(l.property_type||'').replace(/_/g,' ')}${area?' · '+area:''}</div>
+        </div>
+        <div class="listing-card-right">
+          <div class="listing-price">${price}</div>
+          <div class="listing-psqft">${psqft}</div>
+          <div style="margin-top:3px">${badge}</div>
+        </div>
+      </div>`;
+    }).join('');
+    const note=list.length>80?`<div style="padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted)">Showing 80 of ${list.length}</div>`:'';
+    document.getElementById('listingsTable').innerHTML=rows+note;
+  }
+
+  // ── Price Trend ─────────────────────────────────────────────────────────────
+  async function renderPriceTrend(){
+    const el=document.getElementById('trendChart');
+    const labelEl=document.getElementById('trendLabel');
+    if(!el) return;
+    try{
+      const raw=await sb(`price_history?city=eq.${activeCity.name}&select=snapshot_date,avg_price_sqft,listing_count&order=snapshot_date.asc&limit=60`);
+      const byDate={};
+      raw.forEach(r=>{
+        if(!byDate[r.snapshot_date]) byDate[r.snapshot_date]={total:0,count:0};
+        byDate[r.snapshot_date].total+=Number(r.avg_price_sqft)*Number(r.listing_count);
+        byDate[r.snapshot_date].count+=Number(r.listing_count);
+      });
+      const pts=Object.entries(byDate)
+        .map(([d,v])=>({date:d,avg:Math.round(v.total/v.count),count:v.count}))
+        .filter(p=>p.count>=10).sort((a,b)=>a.date.localeCompare(b.date));
+      if(pts.length<2){
+        el.innerHTML=`<div class="empty">Not enough history yet.</div>`;
+        if(labelEl) labelEl.textContent=`${pts.length} snapshot${pts.length!==1?'s':''}`;
+        return;
+      }
+      const vals=pts.map(p=>p.avg);
+      const mn=Math.min(...vals),mx=Math.max(...vals);
+      const pad=Math.max((mx-mn)*0.3,300);
+      const W=320,H=60;
+      const xi=i=>Math.round(i/(pts.length-1)*W);
+      const yi=v=>Math.round(H-((v-mn+pad)/(mx-mn+pad*2))*H);
+      const polyPts=pts.map((p,i)=>`${xi(i)},${yi(p.avg)}`).join(' ');
+      const areaPath=`${xi(0)},${H} ${polyPts} ${xi(pts.length-1)},${H}`;
+      const delta=pts[pts.length-1].avg-pts[0].avg;
+      const dc=delta>0?'#e05252':delta<0?'#4ecba8':'#c9a84c';
+      const da=delta>0?'↑':delta<0?'↓':'→';
+      if(labelEl) labelEl.textContent=`${pts.length} snapshots`;
+      el.innerHTML=`
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8px;color:var(--muted)">${pts[0].date.slice(5)} → ${pts[pts.length-1].date.slice(5)}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:${dc}">${da} ₹${Math.abs(delta).toLocaleString('en-IN')}/sqft</span>
+        </div>
+        <svg viewBox="0 0 ${W} ${H+20}" width="100%" style="overflow:visible;display:block">
+          <defs><linearGradient id="tg2" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#c9a84c" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#c9a84c" stop-opacity="0"/>
+          </linearGradient></defs>
+          <polygon points="${areaPath}" fill="url(#tg2)"/>
+          <polyline points="${polyPts}" fill="none" stroke="#c9a84c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+          ${pts.filter((_,i)=>i===0||i===pts.length-1||pts.length<=6).map((p,i,arr)=>{
+            const origI=i===0?0:i===arr.length-1?pts.length-1:pts.indexOf(p);
+            return `<circle cx="${xi(origI)}" cy="${yi(p.avg)}" r="3" fill="#c9a84c" stroke="#060810" stroke-width="1.5"/>
+            <text x="${xi(origI)}" y="${H+14}" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7" fill="rgba(255,255,255,0.3)">${p.date.slice(5)}</text>
+            <text x="${xi(origI)}" y="${yi(p.avg)-7}" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8" fill="rgba(255,255,255,0.7)">₹${(p.avg/1000).toFixed(1)}k</text>`;
+          }).join('')}
+        </svg>`;
+    }catch(e){
+      el.innerHTML=`<div class="empty">Trend unavailable.</div>`;
+    }
+  }
+
+  function formatPrice(n){
+    if(n>=10000000) return (n/10000000).toFixed(2)+' Cr';
+    if(n>=100000) return (n/100000).toFixed(1)+' L';
+    return n.toLocaleString('en-IN');
+  }
+  function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+  buildCityTabs();
+  loadCity(activeCity);
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+  const PINCODE_COORDS={
+    '444001':[20.7068,77.0040],'444002':[20.7110,77.0130],'444004':[20.6980,76.9980],
+    '444005':[20.7200,77.0200],'444101':[20.7750,77.0850],'444104':[20.6500,77.1200],
+    '444107':[20.7400,76.9200],'445206':[20.5300,77.2100],
+    '444601':[20.9374,77.7796],'444602':[20.9300,77.7700],'444603':[20.9450,77.7900],
+    '444604':[20.9200,77.7600],'444605':[20.9550,77.8000],'444606':[20.9100,77.7500],
+  };
+  const CITY_CENTRES={'Akola':[20.7068,77.0040],'Amravati':[20.9374,77.7796]};
+  let mapInstance=null,allMapMarkers=[],mapRERA=[],mapL99=[],mapFilter='all';
+
+  function initMap(city){
+    if(mapInstance){mapInstance.remove();mapInstance=null;}
+    mapInstance=L.map('cityMap',{center:CITY_CENTRES[city.name]||[20.7068,77.0040],zoom:12,scrollWheelZoom:false,tap:true});
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap © CARTO',subdomains:'abcd',maxZoom:19}).addTo(mapInstance);
+  }
+  function mkPin(color){
+    return L.divIcon({className:'',html:`<svg width="20" height="26" viewBox="0 0 22 28" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="11" cy="26" rx="4" ry="2" fill="rgba(0,0,0,0.35)"/>
+      <path d="M11 1C6.03 1 2 5.03 2 10c0 6.5 9 17 9 17s9-10.5 9-17c0-4.97-4.03-9-9-9z" fill="${color}" stroke="rgba(0,0,0,0.4)" stroke-width="1"/>
+      <circle cx="11" cy="10" r="3.5" fill="rgba(255,255,255,0.3)"/>
+    </svg>`,iconSize:[20,26],iconAnchor:[10,26],popupAnchor:[0,-28]});
+  }
+  function mkSq(color){
+    return L.divIcon({className:'',html:`<svg width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <rect x="1" y="1" width="14" height="14" rx="3" fill="${color}" stroke="rgba(0,0,0,0.4)" stroke-width="1"/>
+    </svg>`,iconSize:[14,14],iconAnchor:[7,7],popupAnchor:[0,-8]});
+  }
+  const RI={flagged:mkPin('#e05252'),lapsed:mkPin('#c9a84c'),completed:mkPin('#5b8def'),active:mkPin('#4ecba8')};
+  const LI={sale:mkSq('#a78bfa'),rent:mkSq('#f59e0b')};
+  function rIcon(p){
+    if(p.is_flagged) return RI.flagged;
+    const s=p.rera_status||'';
+    if(s==='lapsed'||s==='de-registered') return RI.lapsed;
+    if(s==='completed') return RI.completed;
+    return RI.active;
+  }
+  function jitter(lat,lon,i){const a=(i*137.5)*Math.PI/180,r=0.0004*Math.sqrt(i%12+1);return[lat+r*Math.sin(a),lon+r*Math.cos(a)];}
+
+  function renderMapMarkers(){
+    if(!mapInstance) return;
+    allMapMarkers.forEach(m=>m.remove());allMapMarkers=[];
+    const showR=mapFilter==='all'||mapFilter==='rera'||mapFilter==='flagged';
+    const showL=mapFilter==='all'||mapFilter==='listings';
+    const onlyF=mapFilter==='flagged';
+    const pi={};
+    if(showR){
+      (onlyF?mapRERA.filter(p=>p.is_flagged):mapRERA).forEach(p=>{
+        let lat,lon;
+        if(p.latitude&&p.longitude){lat=Number(p.latitude);lon=Number(p.longitude);}
+        else if(PINCODE_COORDS[p.pin_code]){[lat,lon]=PINCODE_COORDS[p.pin_code];const k=p.pin_code;pi[k]=(pi[k]||0);[lat,lon]=jitter(lat,lon,pi[k]++);}
+        else return;
+        const st=p.rera_status||'';
+        const bc=p.is_flagged?'#e05252':st==='lapsed'?'#c9a84c':st==='completed'?'#5b8def':'#4ecba8';
+        const popup=`<div class="map-popup-name">${esc(p.project_name||'—')}</div>
+          <div class="map-popup-row"><b>Promoter:</b> ${esc(p.promoter_name||'—')}</div>
+          <div class="map-popup-row"><b>Status:</b> ${st}${p.complaint_count>0?' · <b>'+p.complaint_count+' complaints</b>':''}</div>
+          <div style="margin-top:5px"><span class="map-popup-badge" style="background:${bc}22;border:1px solid ${bc};color:${bc}">${p.is_flagged?'⚠ FLAGGED':st.toUpperCase()}</span></div>`;
+        allMapMarkers.push(L.marker([lat,lon],{icon:rIcon(p)}).bindPopup(popup,{maxWidth:220}).addTo(mapInstance));
+      });
+    }
+    if(showL){
+      mapL99.forEach((l,i)=>{
+        const lat=l.latitude?Number(l.latitude):null,lon=l.longitude?Number(l.longitude):null;
+        if(!lat||!lon) return;
+        const[jlat,jlon]=jitter(lat,lon,i%10);
+        const price=l.listed_price?'₹'+formatPrice(Number(l.listed_price)):'—';
+        const bc=l.listing_type==='rent'?'#f59e0b':'#a78bfa';
+        const popup=`<div class="map-popup-name">${esc(l.locality||'—')}</div>
+          <div class="map-popup-row"><b>Price:</b> ${price}${l.price_per_sqft?' · ₹'+Math.round(l.price_per_sqft).toLocaleString('en-IN')+'/sqft':''}</div>
+          <div style="margin-top:5px"><span class="map-popup-badge" style="background:${bc}22;border:1px solid ${bc};color:${bc}">${(l.listing_type||'sale').toUpperCase()}</span></div>`;
+        allMapMarkers.push(L.marker([jlat,jlon],{icon:l.listing_type==='rent'?LI.rent:LI.sale}).bindPopup(popup,{maxWidth:220}).addTo(mapInstance));
+      });
+    }
+    document.getElementById('mapCount').textContent=`${allMapMarkers.length} pins`;
+    if(allMapMarkers.length>0) mapInstance.fitBounds(L.featureGroup(allMapMarkers).getBounds().pad(0.15));
+  }
+  function setMapFilter(f,btn){
+    mapFilter=f;
+    document.querySelectorAll('.map-btn').forEach(b=>b.className='map-btn');
+    btn.classList.add(`active-${f}`);
+    renderMapMarkers();
+  }
+  function updateMap(projects,listings,city){
+    mapRERA=projects;mapL99=listings;
+    if(!mapInstance) initMap(city);
+    else mapInstance.setView(CITY_CENTRES[city.name]||[20.7068,77.0040],12);
+    renderMapMarkers();
+  }
+</script>
+</body>
+</html>
